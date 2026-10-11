@@ -7,6 +7,7 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   FRONTEND_URL: z.string().min(1),
   API_URL: z.string().url().optional(),
+  RENDER_EXTERNAL_URL: z.string().url().optional(),
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SAMESITE: z.enum(['lax', 'none', 'strict']).optional(),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
@@ -38,6 +39,20 @@ const schema = z.object({
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_NAME: z.string().default('Admin'),
   ADMIN_INITIAL_PASSWORD: z.string().optional(),
+}).superRefine((value, ctx) => {
+  if (value.NODE_ENV !== 'production') return;
+  const callbackBaseAvailable = !!(value.API_URL || value.RENDER_EXTERNAL_URL);
+  for (const [provider, id, secret, callback] of [
+    ['Google', value.GOOGLE_CLIENT_ID, value.GOOGLE_CLIENT_SECRET, value.GOOGLE_CALLBACK_URL],
+    ['GitHub', value.GITHUB_CLIENT_ID, value.GITHUB_CLIENT_SECRET, value.GITHUB_CALLBACK_URL],
+  ] as const) {
+    if (!!id !== !!secret) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [`${provider.toUpperCase()}_CLIENT_SECRET`], message: `${provider} OAuth requires both client ID and client secret` });
+    }
+    if ((id || secret) && !callback && !callbackBaseAvailable) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [`${provider.toUpperCase()}_CALLBACK_URL`], message: `Set ${provider.toUpperCase()}_CALLBACK_URL or API_URL before enabling ${provider} OAuth` });
+    }
+  }
 });
 
 // Treat empty strings (from a copied .env.example) as unset
@@ -54,4 +69,4 @@ const configured = env.FRONTEND_URL.split(',').map((s) => s.trim().replace(/\/$/
 // In development, http://localhost:3000 and http://127.0.0.1:3000 are the same app; accept both so CORS and the CSRF origin check don't reject one of them.
 export const frontendOrigins = isProd ? configured : [...new Set(configured.flatMap((o) => [o, o.replace('//localhost', '//127.0.0.1'), o.replace('//127.0.0.1', '//localhost')]))];
 export const primaryFrontend = frontendOrigins[0];
-export const apiUrl = (env.API_URL ?? `http://localhost:${env.PORT}`).replace(/\/$/, '');
+export const apiUrl = (env.API_URL ?? env.RENDER_EXTERNAL_URL ?? `http://localhost:${env.PORT}`).replace(/\/$/, '');

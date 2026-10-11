@@ -196,10 +196,29 @@ r.put('/founder', upload.any(), async (req: Request, res: Response) => {
   const photo = filesOf(req, 'photo')[0];
   const cta = s(d.ctaUrl);
   if (cta && !/^https?:\/\//i.test(cta)) throw fail('Button URL must start with http:// or https://');
+  const socialLinks = String(d.socialLinks ?? '').split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+    const [label, ...urlParts] = line.split('|');
+    const url = urlParts.join('|').trim();
+    if (!label.trim() || label.trim().length > 40 || !/^https?:\/\//i.test(url)) throw fail('Social links must use one Label|https:// URL per line');
+    try {
+      const parsed = new URL(url);
+      if (parsed.username || parsed.password) throw new Error('URL credentials are not allowed');
+    } catch {
+      throw fail('Enter a valid http:// or https:// social link');
+    }
+    return { label: label.trim(), url };
+  }).slice(0, 8);
+  const contactEmail = s(d.contactEmail);
+  if (contactEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contactEmail)) throw fail('Enter a valid contact email address');
+  const copyrightText = s(d.copyrightText);
+  if (copyrightText && copyrightText.length > 160) throw fail('Copyright text must be 160 characters or fewer');
   const value = {
     name, title: s(d.title) ?? '', bio: String(d.bio ?? '').split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean),
     previously: arr(d.previously) ?? [],
     stats: String(d.stats ?? '').split('\n').map((l) => l.trim()).filter(Boolean).map((l) => { const [v, ...rest] = l.split('|'); return { value: v.trim(), label: rest.join('|').trim() }; }).filter((x) => x.value && x.label),
+    ...(socialLinks.length ? { socialLinks } : {}),
+    ...(contactEmail ? { contactEmail } : {}),
+    ...(copyrightText ? { copyrightText } : {}),
     ...(s(d.ctaLabel) ? { ctaLabel: s(d.ctaLabel) } : {}), ...(cta ? { ctaUrl: cta } : {}),
     ...(photo ? { photoUrl: await imageData(photo, 1000) } : prev.photoUrl ? { photoUrl: prev.photoUrl } : {}),
   };
