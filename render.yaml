@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: risingbrain-api
+    runtime: node
+    plan: starter
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase: { name: risingbrain-db, property: connectionString }
+      - { key: FRONTEND_URL, sync: false }
+      - { key: API_URL, sync: false }
+      - { key: COOKIE_DOMAIN, sync: false }
+      - { key: JWT_SECRET, generateValue: true }
+      - { key: SESSION_SECRET, generateValue: true }
+      - { key: GOOGLE_CLIENT_ID, sync: false }
+      - { key: GOOGLE_CLIENT_SECRET, sync: false }
+      - { key: GOOGLE_CALLBACK_URL, sync: false }
+      - { key: GITHUB_CLIENT_ID, sync: false }
+      - { key: GITHUB_CLIENT_SECRET, sync: false }
+      - { key: GITHUB_CALLBACK_URL, sync: false }
+      - { key: SMTP_HOST, sync: false }
+      - { key: SMTP_PORT, sync: false }
+      - { key: SMTP_USER, sync: false }
+      - { key: SMTP_PASSWORD, sync: false }
+      - { key: EMAIL_FROM, sync: false }
+      - { key: STORAGE_BUCKET, sync: false }
+      - { key: STORAGE_ACCESS_KEY, sync: false }
+      - { key: STORAGE_SECRET_KEY, sync: false }
+      - { key: STORAGE_ENDPOINT, sync: false }
+      - { key: PAYMENT_PROVIDER, value: UPI_MANUAL }
+      - { key: PAYMENT_KEY_ID, sync: false }
+      - { key: PAYMENT_SECRET, sync: false }
+      - { key: PAYMENT_WEBHOOK_SECRET, sync: false }
+      - { key: UPI_PAYMENT_URL, sync: false }
+      - { key: ADMIN_EMAIL, sync: false }
+      - { key: ADMIN_INITIAL_PASSWORD, sync: false }
+databases:
+  - name: risingbrain-db
+    plan: basic-256mb
