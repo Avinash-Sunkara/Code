@@ -46,7 +46,7 @@ npm run typecheck && npm run build && npm run dev
 node scripts/check-api.mjs     # optional: checks the running backend against the contract
 ```
 Production: Vercel (frontend) + Render (backend). Use custom domains under one parent (`app.example.com`, `api.example.com`) and set `COOKIE_DOMAIN=.example.com`, otherwise browsers block the auth cookies.
-`FRONTEND_URL` must equal the exact frontend origin. OAuth callbacks: `https://api.example.com/api/auth/google/callback` and `/github/callback`.
+`FRONTEND_URL` must equal the exact frontend origin. For the current Render deployment, set `GOOGLE_CALLBACK_URL=https://backend-yvzq.onrender.com/api/auth/google/callback` and `GITHUB_CALLBACK_URL=https://backend-yvzq.onrender.com/api/auth/github/callback`; register each exact URL in the corresponding provider console.
 
 ## Not verified / not built — read before launch
 * **Nothing was compiled or run.** The sandbox had no network, so no `npm install`, no Prisma client, no database. New files were only syntax-checked. Expect some type errors on the first `npm run typecheck`; they will be small but real.

@@ -22,7 +22,7 @@ npm run dev                           # http://localhost:4000/health
 2. Build: `npm ci --include=dev && npm run build`. Start: `npm start`. Health check: `/health`.
 3. Set env vars from `.env.example`. Set `ADMIN_EMAIL` + `ADMIN_INITIAL_PASSWORD` (12+ chars) for the first admin; they are used only if no admin exists, and a password change is forced on first login. Remove the password var afterwards.
 4. **Cookies across domains:** Vercel and Render are different sites, and Safari/Chrome increasingly block third-party cookies. Use custom domains under one parent (e.g. `app.example.com` and `api.example.com`) and set `COOKIE_DOMAIN=.example.com`. Set `FRONTEND_URL` to the exact frontend origin(s), comma-separated.
-5. OAuth redirect URIs must match `GOOGLE_CALLBACK_URL` / `GITHUB_CALLBACK_URL` (`https://api.example.com/api/auth/google/callback`, etc.). If callbacks are omitted, the API host comes from `API_URL` or Render's `RENDER_EXTERNAL_URL`; production refuses partially configured provider credentials or an OAuth configuration with no public callback base.
+5. For the current Render deployment, set `GOOGLE_CALLBACK_URL=https://backend-yvzq.onrender.com/api/auth/google/callback` and `GITHUB_CALLBACK_URL=https://backend-yvzq.onrender.com/api/auth/github/callback`. Register each exact URL in its provider console. If callbacks are omitted, the API host comes from `API_URL` or Render's `RENDER_EXTERNAL_URL`; production refuses partially configured provider credentials or an OAuth configuration with no public callback base.
 
 ## Frontend integration
 - Send every request with `credentials: 'include'`. Auth is HTTP-only cookies (`access_token` 15 min, `refresh_token` rotating, path `/api/auth`). On a 401 call `POST /api/auth/refresh` once, then retry.
