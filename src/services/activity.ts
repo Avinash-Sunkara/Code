@@ -2,7 +2,8 @@ import { ActivityType, Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
 import { env } from '../config/env';
 
-// Views, refreshes, authentication, and navigation are deliberately excluded.
+// Views, refreshes, authentication, bookmarks, hint reveals, and navigation are excluded.
+// Keep the user-facing rules in docs/LEARNING_ACTIVITY.md in sync with this list.
 const COUNTED = new Set<ActivityType>([
   'PROBLEM_SOLVED', 'PROBLEM_REVISED', 'PERSONAL_NOTE_CREATED', 'STUDY_SESSION',
   'PRACTICE', 'ROADMAP_RESOURCE_COMPLETED', 'COMMENT',

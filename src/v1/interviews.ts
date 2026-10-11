@@ -6,7 +6,7 @@ import { E } from '../utils/http';
 import { uniqueSlug } from '../utils/slug';
 import { safeText } from '../validators/common';
 import { authenticate, optionalAuth } from '../middleware/auth';
-import { logActivity } from '../services/activity';
+import { logActivity, rebuildDailyActivity } from '../services/activity';
 import { diffIn, diffOut, pageOf, pq, send } from './util';
 import { renderBody } from './content';
 
@@ -98,7 +98,7 @@ r.post('/interviews/:id/comments', authenticate, async (req: Request, res: Respo
   const x = await prisma.interviewExperience.findFirst({ where: { id: req.params.id, isPublished: true }, select: { id: true } });
   if (!x) throw E.notFound('Experience not found');
   const c = await prisma.interviewComment.create({ data: { experienceId: x.id, userId: req.user!.id, body }, include: { user: { select: { name: true, username: true } } } });
-  await logActivity(req.user!.id, 'COMMENT', { refType: 'InterviewExperience', refId: x.id });
+  await logActivity(req.user!.id, 'COMMENT', { refType: 'InterviewComment', refId: c.id });
   send(res, commentOut(c, req.user!.id), 201);
 });
 
@@ -106,7 +106,15 @@ r.delete('/interviews/:id/comments/:cid', authenticate, async (req: Request, res
   const c = await prisma.interviewComment.findFirst({ where: { id: req.params.cid, experienceId: req.params.id } });
   if (!c || c.isDeleted) throw E.notFound('Comment not found');
   if (c.userId !== req.user!.id && req.user!.role !== 'ADMIN') throw E.forbidden('You can only delete your own comments');
-  await prisma.interviewComment.update({ where: { id: c.id }, data: { isDeleted: true } });
+  await prisma.$transaction(async (tx) => {
+    await tx.interviewComment.update({ where: { id: c.id }, data: { isDeleted: true } });
+    const where = { userId: c.userId, type: 'COMMENT' as const, refType: 'InterviewComment', refId: c.id };
+    const events = await tx.activity.findMany({ where, select: { date: true } });
+    await tx.activity.deleteMany({ where });
+    for (const date of new Map(events.map((event) => [event.date.toISOString().slice(0, 10), event.date])).values()) {
+      await rebuildDailyActivity(tx, c.userId, date);
+    }
+  });
   res.status(204).end();
 });
 

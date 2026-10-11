@@ -12,8 +12,8 @@ import { RESERVED } from '../validators/auth';
 type Provider = 'google' | 'github';
 const cfg = (p: Provider) =>
   p === 'google'
-    ? { id: env.GOOGLE_CLIENT_ID, secret: env.GOOGLE_CLIENT_SECRET, cb: env.GOOGLE_CALLBACK_URL ?? `${apiUrl}/api/auth/google/callback`, url: 'https://accounts.google.com/o/oauth2/v2/auth', scope: 'openid email profile' }
-    : { id: env.GITHUB_CLIENT_ID, secret: env.GITHUB_CLIENT_SECRET, cb: env.GITHUB_CALLBACK_URL ?? `${apiUrl}/api/auth/github/callback`, url: 'https://github.com/login/oauth/authorize', scope: 'read:user user:email' };
+    ? { id: env.GOOGLE_CLIENT_ID, secret: env.GOOGLE_CLIENT_SECRET, cb: env.GOOGLE_CALLBACK_URL ?? (isProd ? `${primaryFrontend}/api/auth/google/callback` : `${apiUrl}/api/auth/google/callback`), url: 'https://accounts.google.com/o/oauth2/v2/auth', scope: 'openid email profile' }
+    : { id: env.GITHUB_CLIENT_ID, secret: env.GITHUB_CLIENT_SECRET, cb: env.GITHUB_CALLBACK_URL ?? (isProd ? `${primaryFrontend}/api/auth/github/callback` : `${apiUrl}/api/auth/github/callback`), url: 'https://github.com/login/oauth/authorize', scope: 'read:user user:email' };
 
 const stateCookie = { httpOnly: true, signed: true, secure: isProd, sameSite: 'lax' as const, path: '/api/auth', maxAge: 10 * 60_000 };
 

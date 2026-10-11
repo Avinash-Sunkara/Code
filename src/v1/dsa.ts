@@ -6,7 +6,7 @@ import { E } from '../utils/http';
 import { stripHtml } from '../utils/serializers';
 import { authenticate, optionalAuth } from '../middleware/auth';
 import { entitledIds } from '../services/access';
-import { clearProblemSolveActivity, logActivity, recordActivity } from '../services/activity';
+import { clearProblemSolveActivity, localDate, logActivity, recordActivity } from '../services/activity';
 import { diffIn, diffOut, pageOf, pq, send, toBool } from './util';
 
 const r = Router();
@@ -218,9 +218,35 @@ r.put('/problems/:id/note', authenticate, async (req: Request, res: Response) =>
   const { note } = z.object({ note: z.string().max(10000) }).parse(req.body ?? {});
   const userId = req.user!.id;
   const text = stripHtml(note).trim() || null;
-  const prev = await prisma.userProblemProgress.findUnique({ where: progressKey(userId, id) });
-  await prisma.userProblemProgress.upsert({ where: progressKey(userId, id), create: { userId, problemId: id, status: 'NOT_STARTED', personalNote: text }, update: { personalNote: text } });
-  if (text && !prev?.personalNote) await logActivity(userId, 'PERSONAL_NOTE_CREATED', { refType: 'Problem', refId: id });
+  const date = localDate();
+  await prisma.$transaction(async (tx) => {
+    const key = progressKey(userId, id);
+    const prev = await tx.userProblemProgress.findUnique({ where: key });
+    if (prev) {
+      const changed = await tx.userProblemProgress.updateMany({
+        where: { userId, problemId: id, ...(text ? { personalNote: null } : {}) },
+        data: { personalNote: text },
+      });
+      if (text && changed.count) await recordActivity(tx, userId, 'PERSONAL_NOTE_CREATED', { refType: 'Problem', refId: id }, date);
+      else if (text && !changed.count) await tx.userProblemProgress.update({ where: key, data: { personalNote: text } });
+      return;
+    }
+
+    const created = await tx.userProblemProgress.createMany({
+      data: [{ userId, problemId: id, status: 'NOT_STARTED', personalNote: text }],
+      skipDuplicates: true,
+    });
+    if (created.count) {
+      if (text) await recordActivity(tx, userId, 'PERSONAL_NOTE_CREATED', { refType: 'Problem', refId: id }, date);
+      return;
+    }
+
+    // A concurrent request inserted the progress row. Count only the request that
+    // changes its note from empty to non-empty, while still saving later edits.
+    const changed = text ? await tx.userProblemProgress.updateMany({ where: { userId, problemId: id, personalNote: null }, data: { personalNote: text } }) : { count: 0 };
+    if (text && changed.count) await recordActivity(tx, userId, 'PERSONAL_NOTE_CREATED', { refType: 'Problem', refId: id }, date);
+    if (!changed.count) await tx.userProblemProgress.update({ where: key, data: { personalNote: text } });
+  });
   send(res, { note: text });
 });
 
@@ -236,8 +262,16 @@ r.post('/problems/:id/revised', authenticate, async (req: Request, res: Response
   const userId = req.user!.id;
   const row = await prisma.userProblemProgress.findUnique({ where: progressKey(userId, id) });
   if (!row) throw E.notFound('No progress for this problem');
-  await prisma.userProblemProgress.update({ where: { id: row.id }, data: { flaggedForRevision: false, revisedAt: new Date(), usedHint: false, wrongAttempts: 0 } });
-  await logActivity(userId, 'PROBLEM_REVISED', { refType: 'Problem', refId: id });
+  const date = localDate();
+  await prisma.$transaction(async (tx) => {
+    const changed = await tx.userProblemProgress.updateMany({
+      where: { userId, problemId: id, OR: [{ revisedAt: null }, { revisedAt: { lt: date } }] },
+      data: { flaggedForRevision: false, revisedAt: new Date(), usedHint: false, wrongAttempts: 0 },
+    });
+    if (changed.count) await recordActivity(tx, userId, 'PROBLEM_REVISED', { refType: 'Problem', refId: id }, date);
+    else await tx.userProblemProgress.update({ where: progressKey(userId, id), data: { flaggedForRevision: false, revisedAt: new Date(), usedHint: false, wrongAttempts: 0 } });
+  });
+  // The endpoint is safe to retry; one problem can count as revised at most once per app-local day.
   send(res, { revised: true });
 });
 

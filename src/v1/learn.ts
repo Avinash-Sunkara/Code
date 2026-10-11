@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../config/db';
 import { E } from '../utils/http';
 import { authenticate, optionalAuth } from '../middleware/auth';
-import { logActivity } from '../services/activity';
+import { logActivity, recordActivity } from '../services/activity';
 import { diffOut, send } from './util';
 
 const r = Router();
@@ -113,9 +113,22 @@ r.post('/aptitude/questions/:id/answer', authenticate, async (req: Request, res:
   if (choice >= options.length) throw E.badRequest('Invalid option');
   const correct = choice === q.correctIndex;
   const userId = req.user!.id;
-  const prev = await prisma.aptitudeAttempt.findUnique({ where: { userId_questionId: { userId, questionId: q.id } } });
-  await prisma.aptitudeAttempt.upsert({ where: { userId_questionId: { userId, questionId: q.id } }, create: { userId, questionId: q.id, correct }, update: { correct: prev?.correct ? true : correct } });
-  if (!prev) await logActivity(userId, 'PRACTICE', { refType: 'AptitudeQuestion', refId: q.id });
+  await prisma.$transaction(async (tx) => {
+    let prev = await tx.aptitudeAttempt.findUnique({ where: { userId_questionId: { userId, questionId: q.id } } });
+    if (!prev) {
+      const created = await tx.aptitudeAttempt.createMany({ data: [{ userId, questionId: q.id, correct }], skipDuplicates: true });
+      if (created.count) {
+        await recordActivity(tx, userId, 'PRACTICE', { refType: 'AptitudeQuestion', refId: q.id });
+        return;
+      }
+      // Another concurrent request created this user's first attempt. Re-read it and update
+      // the answer without emitting a second contribution event.
+      prev = await tx.aptitudeAttempt.findUnique({ where: { userId_questionId: { userId, questionId: q.id } } });
+    }
+    if (prev && !prev.correct && correct) {
+      await tx.aptitudeAttempt.update({ where: { userId_questionId: { userId, questionId: q.id } }, data: { correct: true } });
+    }
+  });
   send(res, { correct, answerIndex: q.correctIndex, ...(q.explanation ? { explanation: q.explanation } : {}) });
 });
 
