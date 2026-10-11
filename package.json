@@ -9,6 +9,7 @@
     "start": "node scripts/migrate.js && node dist/server.js",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
+    "admin:reset-password": "tsx src/scripts/reset-admin-password.ts",
     "seed": "tsx src/prisma/seed.ts",
     "typecheck": "tsc --noEmit",
     "test:smoke": "tsx tests/smoke.ts"
