@@ -54,17 +54,45 @@ r.get('/core-cs/categories/:slug/patterns', optionalAuth, async (req: Request, r
 r.get('/core-cs/topics/:slug', optionalAuth, async (req: Request, res: Response) => {
   const t = await prisma.coreTopic.findFirst({
     where: { isPublished: true, OR: [{ slug: req.params.slug }, { id: req.params.slug }] },
-    include: { pattern: { select: { name: true } }, contents: { where: { isPublished: true }, orderBy: { order: 'asc' } } },
+    include: { pattern: { select: { name: true } }, contents: { where: { isPublished: true }, orderBy: { order: 'asc' } }, _count: { select: { questions: { where: { isPublished: true } } } } },
   });
   if (!t) throw E.notFound('Topic not found');
   if (req.user) await logActivity(req.user.id, 'NOTE_VIEWED', { refType: 'CoreTopic', refId: t.id });
   const raw = t.contents.map((c) => (c.title ? `<h2>${c.title}</h2>\n${c.body}` : c.body)).join('\n');
   const { html, headings } = withHeadings(raw);
   const done = await doneSet(req.user?.id, 'core');
-  send(res, { id: t.id, title: t.name, slug: t.slug, ...(t.pattern ? { patternTitle: t.pattern.name.toUpperCase() } : {}), ...(t.summary ? { summary: t.summary } : {}), html, headings, practiceCount: 0, completed: done.has(t.id), locked: false, access: 'FREE' });
+  send(res, { id: t.id, title: t.name, slug: t.slug, ...(t.pattern ? { patternTitle: t.pattern.name.toUpperCase() } : {}), ...(t.summary ? { summary: t.summary } : {}), html, headings, practiceCount: t._count.questions, completed: done.has(t.id), locked: false, access: 'FREE' });
 });
 
-r.get('/core-cs/topics/:slug/questions', async (_req: Request, res: Response) => { send(res, []); });
+async function coreTopic(slug: string) {
+  const topic = await prisma.coreTopic.findFirst({ where: { isPublished: true, OR: [{ slug }, { id: slug }] }, select: { id: true } });
+  if (!topic) throw E.notFound('Topic not found');
+  return topic;
+}
+
+r.get('/core-cs/topics/:slug/questions', optionalAuth, async (req: Request, res: Response) => {
+  const topic = await coreTopic(req.params.slug);
+  const questions = await prisma.corePracticeQuestion.findMany({ where: { topicId: topic.id, isPublished: true }, orderBy: { order: 'asc' }, select: { id: true, prompt: true, options: true } });
+  send(res, questions.map((q) => ({ id: q.id, prompt: q.prompt, options: Array.isArray(q.options) ? q.options.map(String) : [] })));
+});
+
+r.post('/core-cs/topics/:slug/mock-test/submit', authenticate, async (req: Request, res: Response) => {
+  const topic = await coreTopic(req.params.slug);
+  const { answers } = z.object({ answers: z.array(z.object({ questionId: z.string().min(1), choice: z.number().int().min(0).max(20) })).min(1).max(100) }).parse(req.body ?? {});
+  const ids = answers.map((a) => a.questionId);
+  if (new Set(ids).size !== ids.length) throw E.badRequest('Each question can only be answered once');
+  const questions = await prisma.corePracticeQuestion.findMany({ where: { topicId: topic.id, isPublished: true, id: { in: ids } }, orderBy: { order: 'asc' } });
+  if (questions.length !== ids.length) throw E.badRequest('The test questions have changed. Reload and try again.');
+  const byId = new Map(answers.map((a) => [a.questionId, a.choice]));
+  for (const q of questions) if (byId.get(q.id)! >= (Array.isArray(q.options) ? q.options.length : 0)) throw E.badRequest('Invalid option');
+  const results = questions.map((q) => ({ id: q.id, choice: byId.get(q.id)!, answerIndex: q.correctIndex, correct: byId.get(q.id) === q.correctIndex, ...(q.explanation ? { explanation: q.explanation } : {}) }));
+  await prisma.$transaction(results.map((a) => prisma.corePracticeAttempt.upsert({
+    where: { userId_questionId: { userId: req.user!.id, questionId: a.id } },
+    create: { userId: req.user!.id, questionId: a.id, correct: a.correct },
+    update: { correct: a.correct },
+  })));
+  send(res, { score: results.filter((a) => a.correct).length, total: results.length, results });
+});
 
 // ───── Aptitude (/aptitude) ─────
 r.get('/aptitude/categories', async (_req: Request, res: Response) => {

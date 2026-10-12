@@ -145,6 +145,7 @@ model User {
   interviews        InterviewExperience[]
   notifications     NotificationRecipient[]
   aptitudeAttempts  AptitudeAttempt[]
+  corePracticeAttempts CorePracticeAttempt[]
   topicCompletions  TopicCompletion[]
   roadmapNodes      UserRoadmapNode[]
 
@@ -384,8 +385,36 @@ model CoreTopic {
   category    CoreCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   pattern     CorePattern? @relation(fields: [patternId], references: [id], onDelete: SetNull)
   contents    CoreContent[]
+  questions   CorePracticeQuestion[]
 
   @@index([categoryId, order])
+}
+
+model CorePracticeQuestion {
+  id          String                 @id @default(cuid())
+  topicId     String
+  prompt      String
+  options     Json
+  correctIndex Int
+  explanation String?
+  order       Int                    @default(0)
+  isPublished Boolean                @default(true)
+  topic       CoreTopic              @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  attempts    CorePracticeAttempt[]
+
+  @@index([topicId, order])
+}
+
+model CorePracticeAttempt {
+  userId     String
+  questionId String
+  correct    Boolean
+  updatedAt  DateTime              @updatedAt
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question   CorePracticeQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, questionId])
+  @@index([userId])
 }
 
 model CoreContent {
@@ -506,6 +535,21 @@ model CheatSheet {
   updatedAt       DateTime           @updatedAt
 
   @@index([category, isPublished])
+}
+
+model Certification {
+  id          String   @id @default(cuid())
+  title       String
+  provider    String
+  description String?
+  url         String
+  imageUrl    String?
+  order       Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isPublished, order])
 }
 
 model ContentEntitlement {

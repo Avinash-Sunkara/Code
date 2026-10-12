@@ -130,6 +130,20 @@ mount({
     await prisma.coreContent.create({ data: { topicId: item.id, title: '', body: String(d.html), order: 0, isPublished: true } });
   },
 });
+mount({
+  path: `${CORE}/questions`, model: 'corePracticeQuestion', entity: 'CorePracticeQuestion', search: ['prompt'], orderBy: [{ topic: { name: 'asc' } }, { order: 'asc' }], include: { topic: { select: { name: true } } },
+  publishField: 'isPublished', orderField: 'order', siblings: (x) => ({ topicId: x.topicId }),
+  row: (x) => ({ id: x.id, topicId: x.topicId, topicTitle: x.topic.name, prompt: x.prompt, options: x.options, answerIndex: x.correctIndex, explanation: x.explanation ?? '', order: x.order, published: x.isPublished }),
+  write: async (_q, d, create) => {
+    const options = arr(d.options);
+    const correct = n(d.answerIndex) ?? (create ? 0 : undefined);
+    if (create) { need(s(d.prompt), 'Question'); need(options, 'Options'); }
+    if (options && (options.length < 2 || options.length > 8)) throw fail('Provide between 2 and 8 options');
+    if (options && correct !== undefined && (correct < 0 || correct >= options.length)) throw fail('The correct option number is out of range');
+    if (create && correct === undefined) throw fail('Choose the correct option');
+    return { topicId: create ? need(s(d.topicId), 'Topic') : s(d.topicId), prompt: s(d.prompt), options, correctIndex: correct, explanation: sn(d.explanation), order: n(d.order), isPublished: b(d.published) };
+  },
+});
 
 // ───── Aptitude ─────
 const APT = '/aptitude';
@@ -210,6 +224,20 @@ mount({
   },
   after: async (item, d, req) => { if (d.access === 'PRIVATE') await syncAllowedEmails('CHEATSHEET', item.id, arr(d.allowedEmails) ?? [], req.user!.id); else if (d.access) await syncAllowedEmails('CHEATSHEET', item.id, [], req.user!.id); },
   onDelete: async (x) => { if (x.fileKey) await storage.deleteObject(x.fileKey).catch(() => undefined); },
+});
+
+mount({
+  path: '/certifications', model: 'certification', entity: 'Certification', search: ['title', 'provider', 'description'], orderBy: [{ order: 'asc' }, { createdAt: 'desc' }], publishField: 'isPublished', orderField: 'order',
+  row: (x) => ({ id: x.id, title: x.title, provider: x.provider, description: x.description ?? '', url: x.url, imageUrl: x.imageUrl ?? '', order: x.order, published: x.isPublished }),
+  write: async (req, d, create, ex) => {
+    const image = filesOf(req, 'image')[0];
+    const title = create ? need(s(d.title), 'Title') : s(d.title);
+    const provider = create ? need(s(d.provider), 'Provider') : s(d.provider);
+    const url = d.url === undefined && !create ? undefined : urlOrNull(d.url);
+    if (create && !url) throw fail('A certification link is required');
+    if (d.url !== undefined && !url) throw fail('Enter a valid certification URL');
+    return { title, provider, description: sn(d.description), url, imageUrl: image ? await imageData(image, 1200) : undefined, order: n(d.order), isPublished: b(d.published) };
+  },
 });
 
 // ───── Roadmaps (Roadmap → section → topic → resource; the admin "node" tab is the unified section/topic tree) ─────

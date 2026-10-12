@@ -58,6 +58,11 @@ const csOut = (n: Prisma.CheatSheetGetPayload<{ select: typeof csSel }>, locked:
 
 const hidden = (user: Request['user'], owned: Set<string>) => (user?.role === 'ADMIN' ? {} : { AND: [{ OR: [{ accessType: { not: 'SELECTED_USERS' as const } }, { id: { in: [...owned] } }] }] });
 
+r.get('/certifications', async (_req: Request, res: Response) => {
+  const rows = await prisma.certification.findMany({ where: { isPublished: true }, orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] });
+  send(res, rows.map((x) => ({ id: x.id, title: x.title, provider: x.provider, description: x.description ?? '', url: x.url, ...(x.imageUrl ? { imageUrl: x.imageUrl } : {}) })));
+});
+
 r.get('/notes', optionalAuth, async (req: Request, res: Response) => {
   const cat = String(req.query.category ?? '').trim();
   const owned = await entitledIds(req.user?.id, 'NOTE');
